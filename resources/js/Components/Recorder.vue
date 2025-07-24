@@ -46,7 +46,7 @@ const logger = {
 
 function monitorRouteChanges() {
   let currentUrl = location.href
-  console.log([logger] START: ${currentUrl})
+  console.log(`[logger] START: ${currentUrl}`)
 
   logger.visitedRoutes.push({
     timestamp: new Date().toISOString(),
@@ -56,7 +56,7 @@ function monitorRouteChanges() {
   const logRouteChange = () => {
     const newUrl = location.href
     if (newUrl !== currentUrl) {
-      console.log([logger] Foi de [${currentUrl}] para: [${newUrl}])
+      console.log(`[logger] Foi de [${currentUrl}] para: [${newUrl}]`)
       currentUrl = newUrl
       logger.visitedRoutes.push({
         timestamp: new Date().toISOString(),
@@ -242,7 +242,7 @@ const saveRecording = () => {
 const formatTimer = (seconds) => {
   const min = Math.floor(seconds / 60).toString().padStart(2, '0')
   const sec = (seconds % 60).toString().padStart(2, '0')
-  return ${min}:${sec}
+  return `${min}:${sec}`
 }
 
 onBeforeUnmount(() => {

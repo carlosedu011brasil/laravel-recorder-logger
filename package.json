@@ -1,0 +1,25 @@
+{
+  "name": "laravel-recorder-logger",
+  "version": "1.0.0",
+  "description": "Componente Vue para gravação de tela com logging embutido. Instalável via Composer e integrável com aplicações Laravel utilizando Inertia.js ou SPA com Vue 3.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosedu011brasil/laravel-recorder-logger.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/carlosedu011brasil/laravel-recorder-logger/issues"
+  },
+  "homepage": "https://github.com/carlosedu011brasil/laravel-recorder-logger#readme",
+  "devDependencies": {
+    "@vue/compiler-sfc": "^3.5.18",
+    "vue": "^3.5.18"
+  }
+}
