@@ -2,25 +2,32 @@
   <teleport to="body">
     <div class="recorder-wrapper fixed bottom-4 right-4 z-[9999]" v-bind="$attrs">
       <div v-if="!recording" class="pre-record">
-
         <video 
-        v-if="videoPreviewUrl"
-        :src="videoPreviewUrl"
-        controls
-        class="mt-4 rounded shadow w-full"
+          v-if="videoPreviewUrl"
+          :src="videoPreviewUrl"
+          controls
+          class="mt-4 rounded shadow w-full"
         ></video>
 
         <h2 class="text-lg font-semibold mb-2">Descreva o erro e clique em “Iniciar gravação”</h2>
         <textarea
-        v-model="desc"
-        placeholder="Explique o problema..."
-        class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"
+          v-model="desc"
+          placeholder="Explique o problema..."
+          class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"
         />
         <button @click="startRecording" :class="['btn-start', themeClass]">Iniciar Gravação</button>
       </div>
       
       <div v-if="recording" class="rec-controls">
-        <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
+        <!-- Mostrar timer apenas se não estiver oculto -->
+        <p v-if="!hideTimer" class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
+
+        <button @click="toggleTimer" class="btn-secondary">
+          {{ hideTimer ? 'Mostrar Timer' : 'Ocultar Timer' }}
+        </button>
+
+        <button @click="goBack" class="btn-secondary">Voltar</button>
+
         <button @click="pauseRecording" v-if="!paused" class="btn-pause">Pausar</button>
         <button @click="resumeRecording" v-if="paused" class="btn-resume">Continuar</button>
         <button @click="stopRecording" class="btn-stop">Parar</button>
@@ -33,6 +40,16 @@
 import { ref, onMounted, onBeforeUnmount, defineProps } from 'vue'
 
 const videoPreviewUrl = ref(null)
+
+const hideTimer = ref(false);
+
+function toggleTimer() {
+  hideTimer.value = !hideTimer.value;
+}
+
+function goBack() {
+  recording.value = false; // não reseta nada, só muda o estado visual
+}
 
 const logger = {
   StartpageUrl: '',
@@ -83,41 +100,71 @@ function initLogger() {
   console.log('[logger] Inicializando interceptações')
   monitorRouteChanges()
 
-  const originalFetch = window.fetch
+  const originalFetch = window.fetch;
   window.fetch = async (...args) => {
-    const [url, options] = args
+    const [url, options] = args;
+    const method = options?.method || 'GET';
+    const requestBody = options?.body || null;
+
+    const startTime = new Date().toISOString();
+    const response = await originalFetch(...args);
+    const clonedResponse = response.clone(); // clone para poder ler o body
+
+    let responseBody = '';
+    try {
+      responseBody = await clonedResponse.text();
+    } catch(e) {
+      responseBody = '[[logger] Erro ao ler o response]';
+    }
+
     logger.logs.requests.push({
       type: 'fetch',
-      method: options?.method || 'GET',
+      method,
       url: url.toString(),
-      time: new Date().toISOString(),
-    })
-    console.log('[logger] fetch detectado ')
-    return originalFetch(...args)
-  }
-  
-  const originalXHR = window.XMLHttpRequest
+      requestBody,
+      responseBody,
+      status: response.status,
+      time: startTime,
+    });
+    return response;
+  };
+
+
+  const originalXHR = window.XMLHttpRequest;
   window.XMLHttpRequest = class extends originalXHR {
-    constructor() {
-      super()
-      this.addEventListener('loadend', function () {
-        logger.logs.requests.push({
-          type: 'xhr',
-          method: this._method,
-          url: this.responseURL,
-          status: this.status,
-          time: new Date().toISOString(),
-        })
-      })
-      
-      const originalOpen = this.open
+    constructor(){
+      super();
+      this._method = '';
+      this._url    = '';
+      this._body   = '';
+
+      const originalOpen = this.open;
       this.open = function (method, url, ...rest) {
-        this._method = method
-        console.log('[logger] XHR detectado ')
-        return originalOpen.call(this, method, url, ...rest)
-      }
+        this._method = method;
+        this._url = url;
+        return originalOpen.call(this, method, url, ...rest);
+      };
+
+      const originalSend = this.send;
+      this.send = function (body) {
+        this._body = body;
+
+        this.addEventListener('loadend', function () {
+          logger.logs.requests.push({
+            type: 'xhr',
+            method: this._method,
+            url: this.responseURL || this._url,
+            requestBody: this._body,
+            responseBody:  this.responseText || '[[lgger] Sem conteúdo]',
+            status: this.status,
+            time: new Date.toISOString(), 
+          });
+        });
+        return originalSend.call(this, body);
+      };
     }
-  }
+  };
+
 
   window.addEventListener('error', (e) => {
     logger.logs.errors.push({
@@ -301,6 +348,15 @@ textarea {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+  }
+}
+
+.btn-secondary {
+  background-color: #334155;
+  color: #f1f5f9;
+
+  &:hover {
+    background-color: #475569;
   }
 }
 

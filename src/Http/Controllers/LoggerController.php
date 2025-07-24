@@ -9,7 +9,7 @@ class LoggerController extends Controller
 {
     public function __invoke(Request $request)
     {
-        $jsonPath = storage_path('app/public/logger.json');
+        $jsonPath = storage_path('app/public/support/recorders/logger.json');
 
         if (!file_exists($jsonPath)) {
             return response()->json(['error' => 'Arquivo não encontrado'], 404);
@@ -23,7 +23,7 @@ class LoggerController extends Controller
     {
         $data = $request->all();
 
-        $directory = storage_path('app/public');
+        $directory = storage_path('app/public/support/recorders');
         $jsonPath = $directory . '/logger.json';
 
         // Garante que a pasta existe
@@ -31,8 +31,18 @@ class LoggerController extends Controller
             mkdir($directory, 0755, true);
         }
 
-        // Salva o JSON (cria se não existir, sobrescreve se já existir)
-        file_put_contents($jsonPath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        // Carrega logs existentes (ou inicia um array vazio)
+        $logs = file_exists($jsonPath) ? json_decode(file_get_contents($jsonPath), true) : [];
+
+        // Adiciona novo log com a data atual no topo
+        $timestamp = now()->format('Y-m-d H:i:s');
+        $newLog = [$timestamp => $data];
+
+        // Junta novo log com os anteriores (novo no topo)
+        $logs = $newLog + $logs;
+
+        // Salva o JSON final
+        file_put_contents($jsonPath, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
         return response()->json(['status' => 'salvo']);
     }
