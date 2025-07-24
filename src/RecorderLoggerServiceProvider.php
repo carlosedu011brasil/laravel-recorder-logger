@@ -11,7 +11,7 @@ class RecorderLoggerServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/routes/web.php');
         $this->publishes([
             __DIR__.'/../resources/js/Components' => resource_path('js/Components/RecorderLogger',
-            __DIR__.'/../resources/js/plugins' => resource_path('js/plugins'))
+            __DIR__.'/../resources/js/plugins' => resource_path('js/plugins')),
         ], 'recorder-components');
     }
 }
