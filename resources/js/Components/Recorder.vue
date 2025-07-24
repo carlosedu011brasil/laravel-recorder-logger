@@ -1,6 +1,7 @@
 <template>
   <teleport to="body">
     <div class="recorder-wrapper fixed bottom-4 right-4 z-[9999]" v-bind="$attrs">
+      <!-- PRE RECORD -->
       <div v-if="!recording" class="pre-record">
         <video 
           v-if="videoPreviewUrl"
@@ -17,20 +18,26 @@
         />
         <button @click="startRecording" :class="['btn-start', themeClass]">Iniciar Gravação</button>
       </div>
-      
-      <div v-if="recording" class="rec-controls">
-        <!-- Mostrar timer apenas se não estiver oculto -->
-        <p v-if="!hideTimer" class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
 
-        <button @click="toggleTimer" class="btn-secondary">
-          {{ hideTimer ? 'Mostrar Timer' : 'Ocultar Timer' }}
+      <!-- RECORDING CONTROLS -->
+      <div v-if="recording && showRecordingUI" class="rec-controls">
+        <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
+
+        <button @click="toggleControls" class="btn-secondary">
+          Ocultar Controles
         </button>
-
-        <button @click="goBack" class="btn-secondary">Voltar</button>
 
         <button @click="pauseRecording" v-if="!paused" class="btn-pause">Pausar</button>
         <button @click="resumeRecording" v-if="paused" class="btn-resume">Continuar</button>
         <button @click="stopRecording" class="btn-stop">Parar</button>
+      </div>
+
+      <!-- FLOATING BUTTON TO RESTORE -->
+      <div
+        v-if="recording && !showRecordingUI"
+        class="flex justify-end"
+      >
+        <button @click="toggleControls" class="btn-secondary text-xs">Mostrar Controles</button>
       </div>
     </div>
   </teleport>
@@ -155,9 +162,9 @@ function initLogger() {
             method: this._method,
             url: this.responseURL || this._url,
             requestBody: this._body,
-            responseBody:  this.responseText || '[[lgger] Sem conteúdo]',
+            responseBody:  this.responseText || '[[logger] Sem conteúdo]',
             status: this.status,
-            time: new Date.toISOString(), 
+            time: new Date().toISOString(), 
           });
         });
         return originalSend.call(this, body);
@@ -214,6 +221,7 @@ const props = defineProps({
 
 const desc = ref('')
 const recording = ref(false)
+const showRecordingUI = ref(true);
 const paused = ref(false)
 const timer = ref(0)
 const finalizing = ref(false)
@@ -221,8 +229,15 @@ let interval = null
 let mediaRecorder = null
 let recordedChunks = []
 
+function toggleControls() {
+  showRecordingUI.value = !showRecordingUI.value;
+}
+
 const startRecording = async () => {
   initLogger();
+
+  recording.value = true
+  showRecordingUI.value = true
   const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
   mediaRecorder = new MediaRecorder(stream)
   recordedChunks = []
@@ -260,6 +275,7 @@ const stopRecording = () => {
     mediaRecorder.stream.getTracks().forEach((track) => track.stop())
     finalizing.value = true
     videoPreviewUrl.value = null 
+    recording.value = false
   }
 }
 
