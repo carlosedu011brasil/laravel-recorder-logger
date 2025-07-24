@@ -230,6 +230,16 @@ const saveRecording = () => {
   console.log('Conteúdo gerado:', output)
   alert('Gravação finalizada. JSON gerado no console.')
 
+  fetch('/save-logger', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(output)
+  })
+  .then(res => console.log('[logger] Enviado com sucesso'))
+  .catch(err => console.error('[logger] falha ao enviar', err))
+
   finalizing.value = false
   recording.value = false
   paused.value = false
