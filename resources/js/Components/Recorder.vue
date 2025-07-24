@@ -19,10 +19,22 @@
         <button @click="toggleControls" class="btn-secondary text-xs">Mostrar Controles</button>
       </div>
     </div>
+
+  <div
+    v-if="previewReady"
+    class="recorder-controls movable"
+    :style="{ top: position.y + 'px', left: position.x + 'px' }"
+  >
+    <p class="text-sm font-mono mb-2">Visualização da gravação:</p>
+    <video :src="videoPreviewUrl" controls class="w-full rounded mb-2" />
+
+    <button @click="sendRecording" class="btn-start">Enviar</button>
+    <button @click="cancelRecording" class="btn-stop mt-2">Cancelar</button>
+  </div>
   </teleport>
 
   <!-- FORMULÁRIO FIXO: visível apenas quando não está gravando -->
-  <div v-if="!recording" class="recorder-wrapper">
+  <div v-if="!recording && !previewReady && showForm" class="recorder-wrapper">
     <video 
       v-if="videoPreviewUrl"
       :src="videoPreviewUrl"
@@ -43,9 +55,15 @@
 
 <script setup>
 import { ref, reactive, onBeforeUnmount, defineProps } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 
+const page = usePage()
+const showForm = computed(() => page.url === '/')
 
 const videoPreviewUrl = ref(null)
+
+const previewReady = ref(false)
+const sendConfirmed = ref(false)
 
 const position = reactive({ x: 40, y: 40 })
 let dragging = false, offsetX = 0, offsetY = 0
@@ -286,35 +304,48 @@ const stopRecording = () => {
     clearInterval(interval)
     mediaRecorder.stream.getTracks().forEach((track) => track.stop())
     finalizing.value = true
-    videoPreviewUrl.value = null 
-    recording.value = false
   }
 }
 
 const saveRecording = () => {
   const blob = new Blob(recordedChunks, { type: 'video/webm' })
   videoPreviewUrl.value = URL.createObjectURL(blob)
+  previewReady.value = true
+
+  // mantém o estado de gravação desligado
+  recording.value = false
+  paused.value = false
+  clearInterval(interval)
+}
+
+function sendRecording() {
   const log = exportLog()
-  
+
   const output = {
     descricao: desc.value,
     videoUrl: videoPreviewUrl.value,
     logs: JSON.parse(log)
   }
 
-  console.log('Conteúdo gerado:', output)
-  alert('Gravação finalizada. JSON gerado no console.')
-
   fetch('/save-logger', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(output)
   })
-  .then(res => console.log('[logger] Enviado com sucesso'))
-  .catch(err => console.error('[logger] falha ao enviar', err))
+    .then(() => console.log('[logger] Enviado com sucesso'))
+    .catch(err => console.error('[logger] Erro ao enviar', err))
 
+  resetRecorder()
+}
+
+function cancelRecording() {
+  console.log('[logger] Envio cancelado')
+  resetRecorder()
+}
+
+function resetRecorder() {
+  previewReady.value = false
+  videoPreviewUrl.value = null
   finalizing.value = false
   recording.value = false
   paused.value = false
@@ -324,6 +355,9 @@ const saveRecording = () => {
   mediaRecorder = null
 }
 
+
+
+
 const formatTimer = (seconds) => {
   const min = Math.floor(seconds / 60).toString().padStart(2, '0')
   const sec = (seconds % 60).toString().padStart(2, '0')
@@ -332,7 +366,9 @@ const formatTimer = (seconds) => {
 
 onBeforeUnmount(() => {
   if (interval) clearInterval(interval)
-})
+});
+
+
 </script>
 
 
