@@ -5,7 +5,7 @@ Componente Vue para gravação de tela com logging embutido. Instalável via Com
 ## Instalação
 
 ```bash
-composer require seuuser/laravel-recorder-logger
+composer require carlosedu011brasil/laravel-recorder-logger
 php artisan vendor:publish --tag=recorder-components
 ```
 
