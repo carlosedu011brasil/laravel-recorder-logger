@@ -12,3 +12,4 @@ Route::get('/recorder/log', function () {
     $data = json_decode(file_get_contents($path), true);
     return response()->json($data);
 })->name('getRecorderLog');
+ 
