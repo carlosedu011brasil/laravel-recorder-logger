@@ -47,3 +47,4 @@ class LoggerController extends Controller
         return response()->json(['status' => 'salvo']);
     }
 }
+// v1.2.7
