@@ -1,61 +1,76 @@
 <template>
   <teleport to="body">
-    <div class="recorder-wrapper fixed bottom-4 right-4 z-[9999]" v-bind="$attrs">
-      <!-- PRE RECORD -->
-      <div v-if="!recording" class="pre-record">
-        <video 
-          v-if="videoPreviewUrl"
-          :src="videoPreviewUrl"
-          controls
-          class="mt-4 rounded shadow w-full"
-        ></video>
-
-        <h2 class="text-lg font-semibold mb-2">Descreva o erro e clique em “Iniciar gravação”</h2>
-        <textarea
-          v-model="desc"
-          placeholder="Explique o problema..."
-          class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"
-        />
-        <button @click="startRecording" :class="['btn-start', themeClass]">Iniciar Gravação</button>
-      </div>
-
-      <!-- RECORDING CONTROLS -->
-      <div v-if="recording && showRecordingUI" class="rec-controls">
+    <!-- CONTROLES FLUTUANTES E MÓVEIS -->
+    <div
+      v-if="recording"
+      class="recorder-controls movable"
+      :style="{ top: position.y + 'px', left: position.x + 'px' }"
+      @mousedown="startDrag"
+    >
+      <div v-if="showRecordingUI">
         <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
-
-        <button @click="toggleControls" class="btn-secondary">
-          Ocultar Controles
-        </button>
-
+        <button @click="toggleControls" class="btn-secondary">Ocultar Controles</button>
         <button @click="pauseRecording" v-if="!paused" class="btn-pause">Pausar</button>
         <button @click="resumeRecording" v-if="paused" class="btn-resume">Continuar</button>
         <button @click="stopRecording" class="btn-stop">Parar</button>
       </div>
 
-      <!-- FLOATING BUTTON TO RESTORE -->
-      <div
-        v-if="recording && !showRecordingUI"
-        class="flex justify-end"
-      >
+      <div v-else>
         <button @click="toggleControls" class="btn-secondary text-xs">Mostrar Controles</button>
       </div>
     </div>
   </teleport>
+
+  <!-- FORMULÁRIO FIXO: só na rota inicial -->
+  <div v-if="!recording && isStartPage" class="recorder-wrapper" v-bind="$attrs">
+    <video 
+      v-if="videoPreviewUrl"
+      :src="videoPreviewUrl"
+      controls
+      class="mt-4 rounded shadow w-full"
+    ></video>
+
+    <h2 class="text-lg font-semibold mb-2">Descreva o erro e clique em “Iniciar gravação”</h2>
+    <textarea
+      v-model="desc"
+      placeholder="Explique o problema..."
+      class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"
+    />
+    <button @click="startRecording" :class="['btn-start', themeClass]">Iniciar Gravação</button>
+  </div>
 </template>
 
+
 <script setup>
-import { ref, onMounted, onBeforeUnmount, defineProps } from 'vue'
+import { ref, computed, reactive, onBeforeUnmount, defineProps } from 'vue'
+
+const isStartPage = computed(() => {
+  return window.location.pathname === '/' //ou a rota de sua preferencia ex /home /support
+})
 
 const videoPreviewUrl = ref(null)
 
-const hideTimer = ref(false);
+const position = reactive({ x: 40, y: 40 })
+let dragging = false, offsetX = 0, offsetY = 0
 
-function toggleTimer() {
-  hideTimer.value = !hideTimer.value;
+function startDrag(e) {
+  dragging = true
+  offsetX = e.clientX - position.x
+  offsetY = e.clientY - position.y
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
 }
 
-function goBack() {
-  recording.value = false; // não reseta nada, só muda o estado visual
+function onDrag(e) {
+  if (!dragging) return
+  position.x = e.clientX - offsetX
+  position.y = e.clientY - offsetY
+}
+
+function stopDrag() {
+  dragging = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
 }
 
 const logger = {
@@ -375,6 +390,20 @@ textarea {
     background-color: #475569;
   }
 }
+
+.recorder-controls.movable {
+  position: fixed;
+  z-index: 9999;
+  padding: 1rem;
+  background-color: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  max-width: 20rem;
+  color: #fff;
+  cursor: move;
+  user-select: none;
+}
+
 
 .rec-controls,
 .pre-record {
