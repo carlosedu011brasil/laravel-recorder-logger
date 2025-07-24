@@ -21,8 +21,8 @@
     </div>
   </teleport>
 
-  <!-- FORMULÁRIO FIXO: só na rota inicial -->
-  <div v-if="!recording && isStartPage" class="recorder-wrapper" v-bind="$attrs">
+  <!-- FORMULÁRIO FIXO: visível apenas quando não está gravando -->
+  <div v-if="!recording" class="recorder-wrapper">
     <video 
       v-if="videoPreviewUrl"
       :src="videoPreviewUrl"
@@ -36,17 +36,14 @@
       placeholder="Explique o problema..."
       class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"
     />
-    <button @click="startRecording" :class="['btn-start', themeClass]">Iniciar Gravação</button>
+    <button @click="startRecording" :class='btn-start'>Iniciar Gravação</button>
   </div>
 </template>
 
 
 <script setup>
-import { ref, computed, reactive, onBeforeUnmount, defineProps } from 'vue'
+import { ref, reactive, onBeforeUnmount, defineProps } from 'vue'
 
-const isStartPage = computed(() => {
-  return window.location.pathname === '/' //ou a rota de sua preferencia ex /home /support
-})
 
 const videoPreviewUrl = ref(null)
 
