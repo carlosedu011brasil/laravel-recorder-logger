@@ -1,0 +1,19 @@
+{
+  "name": "seuuser/laravel-recorder-logger",
+  "description": "Componente Vue para gravação de tela com logger embutido (console, requests, erros, rotas)",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "RecorderLogger\\": "src/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "RecorderLogger\\RecorderLoggerServiceProvider"
+      ]
+    }
+  },
+  "require": {}
+}
