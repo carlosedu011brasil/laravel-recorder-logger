@@ -1,6 +1,6 @@
 <?php
 
-namespace Vendor\Pacote;
+namespace RecorderLogger;
 
 use Illuminate\Support\ServiceProvider;
 
