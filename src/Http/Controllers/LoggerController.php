@@ -46,7 +46,7 @@ class LoggerController extends Controller
         $request->validate([
             'descricao' => 'required|string',
             'logs' => 'required|array',
-            ])
+        ]);
 
 
         // Salva o JSON final
