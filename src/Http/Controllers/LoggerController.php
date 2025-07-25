@@ -39,7 +39,15 @@ class LoggerController extends Controller
         $newLog = [$timestamp => $data];
 
         // Junta novo log com os anteriores (novo no topo)
-        $logs = $newLog + $logs;
+        // $logs = $newLog + ($logs ?? []);
+        $logs = array_merge($newLog, is_array($logs) ? $logs : []);
+
+
+        $request->validate([
+            'descricao' => 'required|string',
+            'logs' => 'required|array',
+            ])
+
 
         // Salva o JSON final
         file_put_contents($jsonPath, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
