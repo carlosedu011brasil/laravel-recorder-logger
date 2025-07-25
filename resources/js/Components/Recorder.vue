@@ -1,26 +1,23 @@
 <template>
   <teleport to="body">
-    <!-- CONTROLES FLUTUANTES -->
-    <div
-      v-if="recording"
-      class="recorder-controls movable"
-      :style="{ top: position.y + 'px', left: position.x + 'px' }"
-      @mousedown="startDrag"
-    >
-      <div v-if="showRecordingUI" class="rec-controls">
+    <!-- CONTROLES EM TELA FLUTUANTE -->
+    <div v-if="recording && showRecordingUI" class="recorder-overlay">
+      <div class="recorder-modal">
         <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
         <button @click="toggleControls" class="btn-secondary">Ocultar Controles</button>
-        <button @click="pauseRecording" v-if="!paused" class="btn-pause">Pausar</button>
-        <button @click="resumeRecording" v-if="paused" class="btn-resume">Continuar</button>
+        <button @click="pauseRecording" class="btn-pause">Pausar</button>
         <button @click="stopRecording" class="btn-stop">Parar</button>
-      </div>
-
-      <div v-else>
-        <button @click="toggleControls" class="btn-secondary text-xs">Mostrar Controles</button>
       </div>
     </div>
 
-    <!-- PREVIEW -->
+    <!-- BOTÃO PARA REABRIR CONTROLES -->
+    <div v-else-if="recording">
+      <button @click="toggleControls" class="btn-secondary text-xs fixed bottom-4 right-4 z-[9999]">
+        Mostrar Controles
+      </button>
+    </div>
+
+    <!-- PREVIEW FLUTUANTE -->
     <div
       v-if="previewReady"
       class="recorder-controls movable rec-controls"
@@ -45,322 +42,233 @@
   </div>
 </template>
 
-
 <script setup>
-import { ref, reactive, onBeforeUnmount, defineProps, computed } from 'vue'
-import { usePage } from '@inertiajs/vue3'
+  import { ref, reactive, onBeforeUnmount, defineProps, computed } from 'vue'
+  import { usePage } from '@inertiajs/vue3'
 
-const page = usePage()
-const showForm = computed(() => page.url === '/')
-
-const videoPreviewUrl = ref(null)
-
-const previewReady = ref(false)
-const sendConfirmed = ref(false)
-
-const position = reactive({ x: 40, y: 40 })
-let dragging = false, offsetX = 0, offsetY = 0
-
-function startDrag(e) {
-  dragging = true
-  offsetX = e.clientX - position.x
-  offsetY = e.clientY - position.y
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
-}
-
-function onDrag(e) {
-  if (!dragging) return
-  position.x = e.clientX - offsetX
-  position.y = e.clientY - offsetY
-}
-
-function stopDrag() {
-  dragging = false
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-}
-
-const logger = {
-  StartpageUrl: '',
-  visitedRoutes: [],
-  logs: {
-    console: [],
-    errors: [],
-    requests: [],
-  }
-}
-
-function monitorRouteChanges() {
-  let currentUrl = location.href
-  console.log(`[logger] START: ${currentUrl}`)
-
-  logger.visitedRoutes.push({
-    timestamp: new Date().toISOString(),
-    route: currentUrl
+  // === Props & Page ===
+  const props = defineProps({
+    theme: { type: String, default: 'primary' }
   })
+  const page = usePage()
+  const showForm = computed(() => page.url === '/')
 
-  const logRouteChange = () => {
-    const newUrl = location.href
-    if (newUrl !== currentUrl) {
-      console.log(`[logger] Foi de [${currentUrl}] para: [${newUrl}]`)
-      currentUrl = newUrl
-      logger.visitedRoutes.push({
-        timestamp: new Date().toISOString(),
-        route: newUrl
-      })
-    }
+  // === Recorder State ===
+  const desc = ref('')
+  const recording = ref(false)
+  const paused = ref(false)
+  const timer = ref(0)
+  const previewReady = ref(false)
+  const finalizing = ref(false)
+  const sendConfirmed = ref(false)
+  const videoPreviewUrl = ref(null)
+  const showRecordingUI = ref(true)
+
+  // === Position State (Preview Movable) ===
+  const position = reactive({ x: 40, y: 40 })
+
+  // === Logger ===
+  const logger = {
+    StartpageUrl: '',
+    visitedRoutes: [],
+    logs: { console: [], errors: [], requests: [] }
   }
 
-  const hookHistoryMethod = (methodName) => {
-    const original = history[methodName]
-    history[methodName] = function (...args) {
-      const result = original.apply(this, args)
-      logRouteChange()
-      return result
-    }
+  function exportLog() {
+    logger.StartpageUrl = logger.visitedRoutes.at(-1)?.route || location.href
+    return JSON.stringify(logger, null, 2)
   }
 
-  hookHistoryMethod('pushState')
-  hookHistoryMethod('replaceState')
-  window.addEventListener('popstate', logRouteChange)
-}
+  // === Init Logger ===
+  function initLogger() {
+    monitorRouteChanges()
 
-function initLogger() {
-  console.log('[logger] Inicializando interceptações')
-  monitorRouteChanges()
+    // Intercept fetch
+    const originalFetch = window.fetch
+    window.fetch = async (...args) => {
+      const [url, options] = args
+      const method = options?.method || 'GET'
+      const requestBody = options?.body || null
 
-  const originalFetch = window.fetch;
-  window.fetch = async (...args) => {
-    const [url, options] = args;
-    const method = options?.method || 'GET';
-    const requestBody = options?.body || null;
+      const startTime = new Date().toISOString()
+      const response = await originalFetch(...args)
+      const cloned = response.clone()
 
-    const startTime = new Date().toISOString();
-    const response = await originalFetch(...args);
-    const clonedResponse = response.clone(); // clone para poder ler o body
+      let responseBody = ''
+      try { responseBody = await cloned.text() } catch { responseBody = '[[logger] Erro ao ler o response]' }
 
-    let responseBody = '';
-    try {
-      responseBody = await clonedResponse.text();
-    } catch(e) {
-      responseBody = '[[logger] Erro ao ler o response]';
+      logger.logs.requests.push({ type: 'fetch', method, url: url.toString(), requestBody, responseBody, status: response.status, time: startTime })
+      return response
     }
 
-    logger.logs.requests.push({
-      type: 'fetch',
-      method,
-      url: url.toString(),
-      requestBody,
-      responseBody,
-      status: response.status,
-      time: startTime,
-    });
-    return response;
-  };
+    // Intercept XHR
+    const originalXHR = window.XMLHttpRequest
+    window.XMLHttpRequest = class extends originalXHR {
+      constructor() {
+        super()
+        this._method = ''; this._url = ''; this._body = ''
 
+        const originalOpen = this.open
+        this.open = function (method, url, ...rest) {
+          this._method = method; this._url = url
+          return originalOpen.call(this, method, url, ...rest)
+        }
 
-  const originalXHR = window.XMLHttpRequest;
-  window.XMLHttpRequest = class extends originalXHR {
-    constructor(){
-      super();
-      this._method = '';
-      this._url    = '';
-      this._body   = '';
-
-      const originalOpen = this.open;
-      this.open = function (method, url, ...rest) {
-        this._method = method;
-        this._url = url;
-        return originalOpen.call(this, method, url, ...rest);
-      };
-
-      const originalSend = this.send;
-      this.send = function (body) {
-        this._body = body;
-
-        this.addEventListener('loadend', function () {
-          logger.logs.requests.push({
-            type: 'xhr',
-            method: this._method,
-            url: this.responseURL || this._url,
-            requestBody: this._body,
-            responseBody:  this.responseText || '[[logger] Sem conteúdo]',
-            status: this.status,
-            time: new Date().toISOString(), 
-          });
-        });
-        return originalSend.call(this, body);
-      };
+        const originalSend = this.send
+        this.send = function (body) {
+          this._body = body
+          this.addEventListener('loadend', function () {
+            logger.logs.requests.push({
+              type: 'xhr', method: this._method, url: this.responseURL || this._url,
+              requestBody: this._body, responseBody: this.responseText || '[[logger] Sem conteúdo]',
+              status: this.status, time: new Date().toISOString()
+            })
+          })
+          return originalSend.call(this, body)
+        }
+      }
     }
-  };
 
+    // Errors
+    window.addEventListener('error', e => logger.logs.errors.push({ message: e.message, file: e.filename, line: e.lineno, col: e.colno, time: new Date().toISOString() }))
+    window.addEventListener('unhandledrejection', e => logger.logs.errors.push({ message: e.reason?.message || 'Unhandled rejection', time: new Date().toISOString() }))
 
-  window.addEventListener('error', (e) => {
-    logger.logs.errors.push({
-      message: e.message,
-      file: e.filename,
-      line: e.lineno,
-      col: e.colno,
-      time: new Date().toISOString(),
+    // Console logs
+    ['log', 'warn', 'error', 'info'].forEach(type => {
+      const original = console[type]
+      console[type] = (...args) => {
+        logger.logs.console.push({ type, args, time: new Date().toISOString() })
+        original(...args)
+      }
     })
-  })
+  }
 
-  window.addEventListener('unhandledrejection', (e) => {
-    logger.logs.errors.push({
-      message: e.reason?.message || 'Unhandled rejection',
-      time: new Date().toISOString(),
-    })
-  })
+  function monitorRouteChanges() {
+    let currentUrl = location.href
+    logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: currentUrl })
 
-  const interceptConsole = (type) => {
-    const original = console[type]
-    console[type] = (...args) => {
-      logger.logs.console.push({
-        type,
-        args,
-        time: new Date().toISOString(),
-      })
-      original(...args)
+    const logRouteChange = () => {
+      const newUrl = location.href
+      if (newUrl !== currentUrl) {
+        currentUrl = newUrl
+        logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: newUrl })
+      }
     }
+
+    ['pushState', 'replaceState'].forEach(method => {
+      const original = history[method]
+      history[method] = function (...args) {
+        const result = original.apply(this, args)
+        logRouteChange()
+        return result
+      }
+    })
+    window.addEventListener('popstate', logRouteChange)
   }
 
-  ['log', 'warn', 'error', 'info'].forEach(interceptConsole)
-}
+  // === Recorder ===
+  let interval = null
+  let mediaRecorder = null
+  let recordedChunks = []
 
-function exportLog() {
-  logger.StartpageUrl = logger.visitedRoutes.at(-1)?.route || location.href
-  return JSON.stringify(logger, null, 2)
-}
-
-// === COMPONENTE GRAVADOR ===
-
-const props = defineProps({
-  theme: {
-    type: String,
-    default: 'primary',
+  function toggleControls() {
+    showRecordingUI.value = !showRecordingUI.value
   }
-})
 
-const desc = ref('')
-const recording = ref(false)
-const showRecordingUI = ref(true);
-const paused = ref(false)
-const timer = ref(0)
-const finalizing = ref(false)
-let interval = null
-let mediaRecorder = null
-let recordedChunks = []
+  async function startRecording() {
+    initLogger()
 
-function toggleControls() {
-  showRecordingUI.value = !showRecordingUI.value;
-}
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    recordedChunks = []
 
-const startRecording = async () => {
-  initLogger();
+    mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data)
+    mediaRecorder.onstop = saveRecording
 
-  recording.value = true
-  showRecordingUI.value = true
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-  mediaRecorder = new MediaRecorder(stream)
-  recordedChunks = []
-  
-  mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data)
-  mediaRecorder.onstop = saveRecording
-  
-  mediaRecorder.start()
-  recording.value = true
-  paused.value = false
-  timer.value = 0
-  interval = setInterval(() => timer.value++, 1000)
-}
-
-const pauseRecording = () => {
-  if (mediaRecorder?.state === 'recording') {
-    mediaRecorder.pause()
-    paused.value = true
-    clearInterval(interval)
-  }
-}
-
-const resumeRecording = () => {
-  if (mediaRecorder?.state === 'paused') {
-    mediaRecorder.resume()
+    mediaRecorder.start()
+    recording.value = true
     paused.value = false
+    timer.value = 0
     interval = setInterval(() => timer.value++, 1000)
   }
-}
 
-const stopRecording = () => {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop()
-    clearInterval(interval)
-    mediaRecorder.stream.getTracks().forEach((track) => track.stop())
-    finalizing.value = true
-  }
-}
-
-const saveRecording = () => {
-  const blob = new Blob(recordedChunks, { type: 'video/webm' })
-  videoPreviewUrl.value = URL.createObjectURL(blob)
-  previewReady.value = true
-
-  // mantém o estado de gravação desligado
-  recording.value = false
-  paused.value = false
-  clearInterval(interval)
-}
-
-function sendRecording() {
-  const log = exportLog()
-
-  const output = {
-    descricao: desc.value,
-    videoUrl: videoPreviewUrl.value,
-    logs: JSON.parse(log)
+  function pauseRecording() {
+    if (mediaRecorder?.state === 'recording') {
+      mediaRecorder.pause()
+      paused.value = true
+      clearInterval(interval)
+    }
   }
 
-  fetch('/save-logger', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(output)
+  function resumeRecording() {
+    if (mediaRecorder?.state === 'paused') {
+      mediaRecorder.resume()
+      paused.value = false
+      interval = setInterval(() => timer.value++, 1000)
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop()
+      mediaRecorder.stream.getTracks().forEach(track => track.stop())
+      clearInterval(interval)
+      finalizing.value = true
+    }
+  }
+
+  function saveRecording() {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' })
+    videoPreviewUrl.value = URL.createObjectURL(blob)
+    previewReady.value = true
+    recording.value = false
+    paused.value = false
+  }
+
+  function sendRecording() {
+    const output = {
+      descricao: desc.value,
+      videoUrl: videoPreviewUrl.value,
+      logs: JSON.parse(exportLog())
+    }
+
+    fetch('/save-logger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(output)
+    })
+      .then(() => console.log('[logger] Enviado com sucesso'))
+      .catch(err => console.error('[logger] Erro ao enviar', err))
+
+    resetRecorder()
+  }
+
+  function cancelRecording() {
+    console.log('[logger] Envio cancelado')
+    resetRecorder()
+  }
+
+  function resetRecorder() {
+    previewReady.value = false
+    videoPreviewUrl.value = null
+    finalizing.value = false
+    recording.value = false
+    paused.value = false
+    timer.value = 0
+    desc.value = ''
+    recordedChunks = []
+    mediaRecorder = null
+  }
+
+  function formatTimer(seconds) {
+    const min = Math.floor(seconds / 60).toString().padStart(2, '0')
+    const sec = (seconds % 60).toString().padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  onBeforeUnmount(() => {
+    if (interval) clearInterval(interval)
   })
-    .then(() => console.log('[logger] Enviado com sucesso'))
-    .catch(err => console.error('[logger] Erro ao enviar', err))
-
-  resetRecorder()
-}
-
-function cancelRecording() {
-  console.log('[logger] Envio cancelado')
-  resetRecorder()
-}
-
-function resetRecorder() {
-  previewReady.value = false
-  videoPreviewUrl.value = null
-  finalizing.value = false
-  recording.value = false
-  paused.value = false
-  timer.value = 0
-  desc.value = ''
-  recordedChunks = []
-  mediaRecorder = null
-}
-
-
-
-
-const formatTimer = (seconds) => {
-  const min = Math.floor(seconds / 60).toString().padStart(2, '0')
-  const sec = (seconds % 60).toString().padStart(2, '0')
-  return `${min}:${sec}`
-}
-
-onBeforeUnmount(() => {
-  if (interval) clearInterval(interval)
-});
-
 
 </script>
 
@@ -441,7 +349,31 @@ textarea {
   }
 }
 
-/* Estilos globais para botões */
+/* Nova tela flutuante de controle */
+.recorder-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9998;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.recorder-modal {
+  background-color: #1e293b;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: #fff;
+  text-align: center;
+}
+
+/* Botões */
 button.btn-start,
 button.btn-pause,
 button.btn-resume,
@@ -502,5 +434,6 @@ button.btn-secondary {
   }
 }
 </style>
+
 <!-- // -->
 <!-- v1.2.8.6 -->

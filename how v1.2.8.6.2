@@ -1,0 +1,241 @@
+[33mcommit 3bb624614eae1cb4b93912c9aefde79950e1e893[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;33mtag: v1.2.8.6.2[m[33m)[m
+Author: carlosedu011brasil <carlos.eduardo@011brasil.com.br>
+Date:   Fri Jul 25 11:03:02 2025 -0300
+
+    Fix: Reorder template and style
+
+[1mdiff --git a/resources/js/Components/Recorder.vue b/resources/js/Components/Recorder.vue[m
+[1mindex b4747e7..d7e3055 100644[m
+[1m--- a/resources/js/Components/Recorder.vue[m
+[1m+++ b/resources/js/Components/Recorder.vue[m
+[36m@@ -1,13 +1,13 @@[m
+ <template>[m
+   <teleport to="body">[m
+[31m-    <!-- CONTROLES FLUTUANTES E MÓVEIS -->[m
+[32m+[m[32m    <!-- CONTROLES FLUTUANTES -->[m
+     <div[m
+       v-if="recording"[m
+       class="recorder-controls movable"[m
+       :style="{ top: position.y + 'px', left: position.x + 'px' }"[m
+       @mousedown="startDrag"[m
+     >[m
+[31m-      <div v-if="showRecordingUI">[m
+[32m+[m[32m      <div v-if="showRecordingUI" class="rec-controls">[m
+         <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>[m
+         <button @click="toggleControls" class="btn-secondary">Ocultar Controles</button>[m
+         <button @click="pauseRecording" v-if="!paused" class="btn-pause">Pausar</button>[m
+[36m@@ -20,35 +20,28 @@[m
+       </div>[m
+     </div>[m
+ [m
+[31m-  <div[m
+[31m-    v-if="previewReady"[m
+[31m-    class="recorder-controls movable"[m
+[31m-    :style="{ top: position.y + 'px', left: position.x + 'px' }"[m
+[31m-  >[m
+[31m-    <p class="text-sm font-mono mb-2">Visualização da gravação:</p>[m
+[31m-    <video :src="videoPreviewUrl" controls class="w-full rounded mb-2" />[m
+[31m-[m
+[31m-    <button @click="sendRecording" class="btn-start">Enviar</button>[m
+[31m-    <button @click="cancelRecording" class="btn-stop mt-2">Cancelar</button>[m
+[31m-  </div>[m
+[32m+[m[32m    <!-- PREVIEW -->[m
+[32m+[m[32m    <div[m
+[32m+[m[32m      v-if="previewReady"[m
+[32m+[m[32m      class="recorder-controls movable rec-controls"[m
+[32m+[m[32m      :style="{ top: position.y + 'px', left: position.x + 'px' }"[m
+[32m+[m[32m    >[m
+[32m+[m[32m      <p class="text-sm font-mono mb-2">Visualização da gravação:</p>[m
+[32m+[m[32m      <video :src="videoPreviewUrl" controls />[m
+[32m+[m[32m      <button @click="sendRecording" class="btn-start">Enviar</button>[m
+[32m+[m[32m      <button @click="cancelRecording" class="btn-stop mt-2">Cancelar</button>[m
+[32m+[m[32m    </div>[m
+   </teleport>[m
+ [m
+[31m-  <!-- FORMULÁRIO FIXO: visível apenas quando não está gravando -->[m
+[32m+[m[32m  <!-- FORMULÁRIO INICIAL -->[m
+   <div v-if="!recording && !previewReady && showForm" class="recorder-wrapper">[m
+[31m-    <video [m
+[31m-      v-if="videoPreviewUrl"[m
+[31m-      :src="videoPreviewUrl"[m
+[31m-      controls[m
+[31m-      class="mt-4 rounded shadow w-full"[m
+[31m-    ></video>[m
+[31m-[m
+     <h2 class="text-lg font-semibold mb-2">Descreva o erro e clique em “Iniciar gravação”</h2>[m
+     <textarea[m
+       v-model="desc"[m
+       placeholder="Explique o problema..."[m
+       class="resize-none w-full p-3 border border-gray-300 rounded-md text-sm mb-4"[m
+     />[m
+[31m-    <button @click="startRecording" :class='btn-start'>Iniciar Gravação</button>[m
+[32m+[m[32m    <button @click="startRecording" class="btn-start">Iniciar Gravação</button>[m
+   </div>[m
+ </template>[m
+ [m
+[36m@@ -379,8 +372,8 @@[m [monBeforeUnmount(() => {[m
+   margin: 4rem auto;[m
+   border-radius: 12px;[m
+   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);[m
+[31m-  background-color: #1e293b; [m
+[31m-  color: #f8fafc; [m
+[32m+[m[32m  background-color: #1e293b;[m
+[32m+[m[32m  color: #f8fafc;[m
+   display: flex;[m
+   flex-direction: column;[m
+   gap: 1.5rem;[m
+[36m@@ -391,7 +384,7 @@[m [mh2 {[m
+   font-size: 1.25rem;[m
+   font-weight: 600;[m
+   margin-bottom: 0.25rem;[m
+[31m-  color: #f1f5f9; [m
+[32m+[m[32m  color: #f1f5f9;[m
+ }[m
+ [m
+ textarea {[m
+[36m@@ -406,7 +399,6 @@[m [mtextarea {[m
+   color: #e2e8f0;[m
+   resize: none;[m
+   box-sizing: border-box;[m
+[31m-  display: block;[m
+ [m
+   &:focus {[m
+     outline: none;[m
+[36m@@ -415,15 +407,6 @@[m [mtextarea {[m
+   }[m
+ }[m
+ [m
+[31m-.btn-secondary {[m
+[31m-  background-color: #334155;[m
+[31m-  color: #f1f5f9;[m
+[31m-[m
+[31m-  &:hover {[m
+[31m-    background-color: #475569;[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+ .recorder-controls.movable {[m
+   position: fixed;[m
+   z-index: 9999;[m
+[36m@@ -437,9 +420,16 @@[m [mtextarea {[m
+   user-select: none;[m
+ }[m
+ [m
+[32m+[m[32m.recorder-controls.movable video {[m
+[32m+[m[32m  width: 100%;[m
+[32m+[m[32m  max-width: 300px;[m
+[32m+[m[32m  height: auto;[m
+[32m+[m[32m  border-radius: 8px;[m
+[32m+[m[32m  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);[m
+[32m+[m[32m  margin-bottom: 0.5rem;[m
+[32m+[m[32m}[m
+ [m
+[31m-.rec-controls,[m
+[31m-.pre-record {[m
+[32m+[m[32m.rec-controls {[m
+   display: flex;[m
+   flex-direction: column;[m
+   gap: 0.75rem;[m
+[36m@@ -447,54 +437,68 @@[m [mtextarea {[m
+   p {[m
+     font-family: monospace;[m
+     font-size: 1rem;[m
+[31m-    color: #cbd5e1; [m
+[32m+[m[32m    color: #cbd5e1;[m
+   }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/* Estilos globais para botões */[m
+[32m+[m[32mbutton.btn-start,[m
+[32m+[m[32mbutton.btn-pause,[m
+[32m+[m[32mbutton.btn-resume,[m
+[32m+[m[32mbutton.btn-stop,[m
+[32m+[m[32mbutton.btn-secondary {[m
+[32m+[m[32m  padding: 0.625rem 1.25rem;[m
+[32m+[m[32m  font-size: 0.875rem;[m
+[32m+[m[32m  font-weight: 600;[m
+[32m+[m[32m  border-radius: 6px;[m
+[32m+[m[32m  border: none;[m
+[32m+[m[32m  cursor: pointer;[m
+[32m+[m[32m  transition: background-color 0.2s ease;[m
+[32m+[m[32m  text-align: center;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mbutton.btn-start {[m
+[32m+[m[32m  background-color: #3b82f6;[m
+[32m+[m[32m  color: #fff;[m
+ [m
+[31m-  button {[m
+[31m-    padding: 0.625rem 1.25rem;[m
+[31m-    font-size: 0.875rem;[m
+[31m-    font-weight: 600;[m
+[31m-    border-radius: 6px;[m
+[31m-    border: none;[m
+[31m-    cursor: pointer;[m
+[31m-    transition: background-color 0.2s ease;[m
+[31m-    text-align: center;[m
+[32m+[m[32m  &:hover {[m
+[32m+[m[32m    background-color: #2563eb;[m
+   }[m
+[32m+[m[32m}[m
+ [m
+[31m-  .btn-start {[m
+[31m-    background-color: #3b82f6; [m
+[31m-    color: #fff;[m
+[32m+[m[32mbutton.btn-pause {[m
+[32m+[m[32m  background-color: #facc15;[m
+[32m+[m[32m  color: #000;[m
+ [m
+[31m-    &:hover {[m
+[31m-      background-color: #2563eb; [m
+[31m-    }[m
+[32m+[m[32m  &:hover {[m
+[32m+[m[32m    background-color: #eab308;[m
+   }[m
+[32m+[m[32m}[m
+ [m
+[31m-  .btn-pause {[m
+[31m-    background-color: #facc15;[m
+[31m-    color: #000;[m
+[32m+[m[32mbutton.btn-resume {[m
+[32m+[m[32m  background-color: #22c55e;[m
+[32m+[m[32m  color: #fff;[m
+ [m
+[31m-    &:hover {[m
+[31m-      background-color: #eab308;[m
+[31m-    }[m
+[32m+[m[32m  &:hover {[m
+[32m+[m[32m    background-color: #16a34a;[m
+   }[m
+[32m+[m[32m}[m
+ [m
+[31m-  .btn-resume {[m
+[31m-    background-color: #22c55e;[m
+[31m-    color: #fff;[m
+[32m+[m[32mbutton.btn-stop {[m
+[32m+[m[32m  background-color: #ef4444;[m
+[32m+[m[32m  color: #fff;[m
+ [m
+[31m-    &:hover {[m
+[31m-      background-color: #16a34a;[m
+[31m-    }[m
+[32m+[m[32m  &:hover {[m
+[32m+[m[32m    background-color: #dc2626;[m
+   }[m
+[32m+[m[32m}[m
+ [m
+[31m-  .btn-stop {[m
+[31m-    background-color: #ef4444;[m
+[31m-    color: #fff;[m
+[32m+[m[32mbutton.btn-secondary {[m
+[32m+[m[32m  background-color: #334155;[m
+[32m+[m[32m  color: #f1f5f9;[m
+ [m
+[31m-    &:hover {[m
+[31m-      background-color: #dc2626;[m
+[31m-    }[m
+[32m+[m[32m  &:hover {[m
+[32m+[m[32m    background-color: #475569;[m
+   }[m
+ }[m
+ </style>[m
