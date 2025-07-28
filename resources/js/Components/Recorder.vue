@@ -128,9 +128,13 @@ function initLogger() {
   window.addEventListener('unhandledrejection', e => logger.logs.errors.push({ message: e.reason?.message || 'Unhandled rejection', time: new Date().toISOString() }))
 
   ['log', 'warn', 'error', 'info'].forEach(type => {
-    const original = console[type]
+    const original = console[type] || (() => {})
     console[type] = (...args) => {
-      logger.logs.console.push({ type, args, time: new Date().toISOString() })
+      try {
+        logger.logs.console.push({ type, args, time: new Date().toISOString() })
+      } catch (e) {
+        // Falha ao logar o próprio log, ignorar
+      }
       original(...args)
     }
   })
