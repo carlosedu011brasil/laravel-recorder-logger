@@ -422,6 +422,7 @@ button.btn-resume {
   }
 }
 
+
 button.btn-stop {
   background-color: #ef4444;
   color: #fff;
@@ -442,4 +443,4 @@ button.btn-secondary {
 </style>
 
 <!-- // -->
-<!-- v1.2.8.6 -->
+
