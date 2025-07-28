@@ -43,235 +43,241 @@
 </template>
 
 <script setup>
-  import { ref, reactive, onBeforeUnmount, defineProps, computed } from 'vue'
-  import { usePage } from '@inertiajs/vue3'
+import { ref, reactive, onMounted, onBeforeUnmount, defineProps, computed } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 
-  // === Props & Page ===
-  const props = defineProps({
-    theme: { type: String, default: 'primary' }
-  })
-  const page = usePage()
-  const showForm = computed(() => page.url === '/')
+const props = defineProps({ theme: { type: String, default: 'primary' } })
+const page = usePage()
+const showForm = computed(() => page.url === '/')
 
-  // === Recorder State ===
-  const desc = ref('')
-  const recording = ref(false)
-  const paused = ref(false)
-  const timer = ref(0)
-  const previewReady = ref(false)
-  const finalizing = ref(false)
-  const sendConfirmed = ref(false)
-  const videoPreviewUrl = ref(null)
-  const showRecordingUI = ref(true)
+const desc = ref('')
+const recording = ref(false)
+const paused = ref(false)
+const timer = ref(0)
+const previewReady = ref(false)
+const finalizing = ref(false)
+const videoPreviewUrl = ref(null)
+const showRecordingUI = ref(true)
 
-  // === Position State (Preview Movable) ===
-  const position = reactive({ x: 40, y: 40 })
+let interval = null
+let mediaRecorder = null
+let recordedChunks = []
+let stream = null
 
-  // === Logger ===
-  const logger = {
-    StartpageUrl: '',
-    visitedRoutes: [],
-    logs: { console: [], errors: [], requests: [] }
+const position = reactive({ x: 40, y: 40 })
+
+const logger = {
+  StartpageUrl: '',
+  visitedRoutes: [],
+  logs: { console: [], errors: [], requests: [] }
+}
+
+onMounted(() => {
+  if (window._recorderInstance?.active) {
+    restoreFromGlobal()
+  }
+})
+
+function exportLog() {
+  logger.StartpageUrl = logger.visitedRoutes.at(-1)?.route || location.href
+  return JSON.stringify(logger, null, 2)
+}
+
+function initLogger() {
+  monitorRouteChanges()
+  const originalFetch = window.fetch
+  window.fetch = async (...args) => {
+    const [url, options] = args
+    const method = options?.method || 'GET'
+    const requestBody = options?.body || null
+    const startTime = new Date().toISOString()
+    const response = await originalFetch(...args)
+    const cloned = response.clone()
+    let responseBody = ''
+    try { responseBody = await cloned.text() } catch { responseBody = '[[logger] Erro ao ler o response]' }
+    logger.logs.requests.push({ type: 'fetch', method, url: url.toString(), requestBody, responseBody, status: response.status, time: startTime })
+    return response
   }
 
-  function exportLog() {
-    logger.StartpageUrl = logger.visitedRoutes.at(-1)?.route || location.href
-    return JSON.stringify(logger, null, 2)
-  }
-
-  // === Init Logger ===
-  function initLogger() {
-    monitorRouteChanges()
-
-    // Intercept fetch
-    const originalFetch = window.fetch
-    window.fetch = async (...args) => {
-      const [url, options] = args
-      const method = options?.method || 'GET'
-      const requestBody = options?.body || null
-
-      const startTime = new Date().toISOString()
-      const response = await originalFetch(...args)
-      const cloned = response.clone()
-
-      let responseBody = ''
-      try { responseBody = await cloned.text() } catch { responseBody = '[[logger] Erro ao ler o response]' }
-
-      logger.logs.requests.push({ type: 'fetch', method, url: url.toString(), requestBody, responseBody, status: response.status, time: startTime })
-      return response
-    }
-
-    // Intercept XHR
-    const originalXHR = window.XMLHttpRequest
-    window.XMLHttpRequest = class extends originalXHR {
-      constructor() {
-        super()
-        this._method = ''; this._url = ''; this._body = ''
-
-        const originalOpen = this.open
-        this.open = function (method, url, ...rest) {
-          this._method = method; this._url = url
-          return originalOpen.call(this, method, url, ...rest)
-        }
-
-        const originalSend = this.send
-        this.send = function (body) {
-          this._body = body
-          this.addEventListener('loadend', function () {
-            logger.logs.requests.push({
-              type: 'xhr', method: this._method, url: this.responseURL || this._url,
-              requestBody: this._body, responseBody: this.responseText || '[[logger] Sem conteúdo]',
-              status: this.status, time: new Date().toISOString()
-            })
+  const originalXHR = window.XMLHttpRequest
+  window.XMLHttpRequest = class extends originalXHR {
+    constructor() {
+      super()
+      this._method = ''; this._url = ''; this._body = ''
+      const originalOpen = this.open
+      this.open = function (method, url, ...rest) {
+        this._method = method; this._url = url
+        return originalOpen.call(this, method, url, ...rest)
+      }
+      const originalSend = this.send
+      this.send = function (body) {
+        this._body = body
+        this.addEventListener('loadend', function () {
+          logger.logs.requests.push({
+            type: 'xhr', method: this._method, url: this.responseURL || this._url,
+            requestBody: this._body, responseBody: this.responseText || '[[logger] Sem conteúdo]',
+            status: this.status, time: new Date().toISOString()
           })
-          return originalSend.call(this, body)
-        }
+        })
+        return originalSend.call(this, body)
       }
     }
-
-    // Errors
-    window.addEventListener('error', e => logger.logs.errors.push({ message: e.message, file: e.filename, line: e.lineno, col: e.colno, time: new Date().toISOString() }))
-    window.addEventListener('unhandledrejection', e => logger.logs.errors.push({ message: e.reason?.message || 'Unhandled rejection', time: new Date().toISOString() }))
-
-    // Console logs
-    ['log', 'warn', 'error', 'info'].forEach(type => {
-      const original = console[type]
-      console[type] = (...args) => {
-        logger.logs.console.push({ type, args, time: new Date().toISOString() })
-        original(...args)
-      }
-    })
   }
 
-  function monitorRouteChanges() {
-    let currentUrl = location.href
-    logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: currentUrl })
+  window.addEventListener('error', e => logger.logs.errors.push({ message: e.message, file: e.filename, line: e.lineno, col: e.colno, time: new Date().toISOString() }))
+  window.addEventListener('unhandledrejection', e => logger.logs.errors.push({ message: e.reason?.message || 'Unhandled rejection', time: new Date().toISOString() }))
 
-    const logRouteChange = () => {
-      const newUrl = location.href
-      if (newUrl !== currentUrl) {
-        currentUrl = newUrl
-        logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: newUrl })
-      }
+  ['log', 'warn', 'error', 'info'].forEach(type => {
+    const original = console[type]
+    console[type] = (...args) => {
+      logger.logs.console.push({ type, args, time: new Date().toISOString() })
+      original(...args)
     }
+  })
+}
 
-    ['pushState', 'replaceState'].forEach(method => {
-      const original = history[method]
-      history[method] = function (...args) {
-        const result = original.apply(this, args)
-        logRouteChange()
-        return result
-      }
-    })
-    window.addEventListener('popstate', logRouteChange)
+function monitorRouteChanges() {
+  let currentUrl = location.href
+  logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: currentUrl })
+  const logRouteChange = () => {
+    const newUrl = location.href
+    if (newUrl !== currentUrl) {
+      currentUrl = newUrl
+      logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: newUrl })
+    }
   }
+  ['pushState', 'replaceState'].forEach(method => {
+    const original = history[method]
+    history[method] = function (...args) {
+      const result = original.apply(this, args)
+      logRouteChange()
+      return result
+    }
+  })
+  window.addEventListener('popstate', logRouteChange)
+}
 
-  // === Recorder ===
-  let interval = null
-  let mediaRecorder = null
-  let recordedChunks = []
+function toggleControls() {
+  showRecordingUI.value = !showRecordingUI.value
+}
 
-  function toggleControls() {
-    showRecordingUI.value = !showRecordingUI.value
+async function startRecording() {
+  if (window._recorderInstance?.active) return
+  initLogger()
+  stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+  mediaRecorder = new MediaRecorder(stream)
+  recordedChunks = []
+  mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data)
+  mediaRecorder.onstop = saveRecording
+  mediaRecorder.start()
+  recording.value = true
+  paused.value = false
+  timer.value = 0
+  interval = setInterval(() => timer.value++, 1000)
+  window._recorderInstance = {
+    active: true,
+    pause: pauseRecording,
+    resume: resumeRecording,
+    stop: stopRecording,
+    getLogger: exportLog,
+    previewReady,
+    recording,
+    videoPreviewUrl,
+    stream,
+    chunks: recordedChunks,
+    timer,
   }
+}
 
-  async function startRecording() {
-    initLogger()
+function restoreFromGlobal() {
+  const global = window._recorderInstance
+  if (!global) return
+  recording.value = true
+  paused.value = false
+  previewReady.value = global.previewReady?.value || false
+  videoPreviewUrl.value = global.videoPreviewUrl?.value || null
+  recordedChunks = global.chunks || []
+  stream = global.stream
+  timer.value = global.timer?.value || 0
+}
 
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-    mediaRecorder = new MediaRecorder(stream)
-    recordedChunks = []
+function pauseRecording() {
+  if (mediaRecorder?.state === 'recording') {
+    mediaRecorder.pause()
+    paused.value = true
+    clearInterval(interval)
+  }
+}
 
-    mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data)
-    mediaRecorder.onstop = saveRecording
-
-    mediaRecorder.start()
-    recording.value = true
+function resumeRecording() {
+  if (mediaRecorder?.state === 'paused') {
+    mediaRecorder.resume()
     paused.value = false
-    timer.value = 0
     interval = setInterval(() => timer.value++, 1000)
   }
+}
 
-  function pauseRecording() {
-    if (mediaRecorder?.state === 'recording') {
-      mediaRecorder.pause()
-      paused.value = true
-      clearInterval(interval)
-    }
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
+    stream?.getTracks().forEach(t => t.stop())
+    clearInterval(interval)
+    finalizing.value = true
+    window._recorderInstance = null
   }
+}
 
-  function resumeRecording() {
-    if (mediaRecorder?.state === 'paused') {
-      mediaRecorder.resume()
-      paused.value = false
-      interval = setInterval(() => timer.value++, 1000)
-    }
+function saveRecording() {
+  const blob = new Blob(recordedChunks, { type: 'video/webm' })
+  videoPreviewUrl.value = URL.createObjectURL(blob)
+  previewReady.value = true
+  recording.value = false
+  paused.value = false
+}
+
+function sendRecording() {
+  const output = {
+    descricao: desc.value,
+    videoUrl: videoPreviewUrl.value,
+    logs: JSON.parse(exportLog())
   }
-
-  function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop()
-      mediaRecorder.stream.getTracks().forEach(track => track.stop())
-      clearInterval(interval)
-      finalizing.value = true
-    }
-  }
-
-  function saveRecording() {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' })
-    videoPreviewUrl.value = URL.createObjectURL(blob)
-    previewReady.value = true
-    recording.value = false
-    paused.value = false
-  }
-
-  function sendRecording() {
-    const output = {
-      descricao: desc.value,
-      videoUrl: videoPreviewUrl.value,
-      logs: JSON.parse(exportLog())
-    }
-
-    fetch('/save-logger', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(output)
-    })
-      .then(() => console.log('[logger] Enviado com sucesso'))
-      .catch(err => console.error('[logger] Erro ao enviar', err))
-
-    resetRecorder()
-  }
-
-  function cancelRecording() {
-    console.log('[logger] Envio cancelado')
-    resetRecorder()
-  }
-
-  function resetRecorder() {
-    previewReady.value = false
-    videoPreviewUrl.value = null
-    finalizing.value = false
-    recording.value = false
-    paused.value = false
-    timer.value = 0
-    desc.value = ''
-    recordedChunks = []
-    mediaRecorder = null
-  }
-
-  function formatTimer(seconds) {
-    const min = Math.floor(seconds / 60).toString().padStart(2, '0')
-    const sec = (seconds % 60).toString().padStart(2, '0')
-    return `${min}:${sec}`
-  }
-
-  onBeforeUnmount(() => {
-    if (interval) clearInterval(interval)
+  fetch('/save-logger', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(output)
   })
+    .then(() => console.log('[logger] Enviado com sucesso'))
+    .catch(err => console.error('[logger] Erro ao enviar', err))
+  resetRecorder()
+}
 
+function cancelRecording() {
+  console.log('[logger] Envio cancelado')
+  resetRecorder()
+}
+
+function resetRecorder() {
+  previewReady.value = false
+  videoPreviewUrl.value = null
+  finalizing.value = false
+  recording.value = false
+  paused.value = false
+  timer.value = 0
+  desc.value = ''
+  recordedChunks = []
+  mediaRecorder = null
+}
+
+function formatTimer(seconds) {
+  const min = Math.floor(seconds / 60).toString().padStart(2, '0')
+  const sec = (seconds % 60).toString().padStart(2, '0')
+  return `${min}:${sec}`
+}
+
+onBeforeUnmount(() => {
+  if (interval) clearInterval(interval)
+})
 </script>
-
 
 <style lang="scss">
 .recorder-wrapper {
