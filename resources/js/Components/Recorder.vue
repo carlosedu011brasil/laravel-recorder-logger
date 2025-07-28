@@ -180,17 +180,18 @@ function initLogger() {
   })
 
   // Logs do console
-  ['log', 'warn', 'error', 'info'].forEach(type => {
-    const original = console[type] || (() => {})
-    console[type] = (...args) => {
-      try {
-        logger.logs.console.push({ type, args, time: new Date().toISOString() })
-      } catch (e) {
-        // Falha ao logar o próprio log, ignorar
+  if (typeof console !== 'undefined' && typeof logger.logs?.console !== 'undefined') {
+    ['log', 'warn', 'error', 'info'].forEach(type => {
+      const original = typeof console[type] === 'function' ? console[type] : () => {}
+      console[type] = (...args) => {
+        try {
+          logger.logs.console.push({ type, args, time: new Date().toISOString() })
+        } catch (e) {
+          // Falha ao logar o próprio log, ignorar
+        }
+        original(...args)
       }
-      original(...args)
-    }
-  })
+    })
 }
 
 function monitorRouteChanges() {
