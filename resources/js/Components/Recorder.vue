@@ -85,38 +85,75 @@ function exportLog() {
 
 function initLogger() {
   monitorRouteChanges()
+
+  // Garantir que a estrutura de logs está correta antes de sobrescrever o console
+  if (!logger.logs || !Array.isArray(logger.logs.console)) {
+    logger.logs = {
+      console: [],
+      errors: [],
+      requests: []
+    }
+  }
+
+  // Interceptar fetch
   const originalFetch = window.fetch
   window.fetch = async (...args) => {
     const [url, options] = args
     const method = options?.method || 'GET'
     const requestBody = options?.body || null
     const startTime = new Date().toISOString()
+
     const response = await originalFetch(...args)
     const cloned = response.clone()
+
     let responseBody = ''
-    try { responseBody = await cloned.text() } catch { responseBody = '[[logger] Erro ao ler o response]' }
-    logger.logs.requests.push({ type: 'fetch', method, url: url.toString(), requestBody, responseBody, status: response.status, time: startTime })
+    try {
+      responseBody = await cloned.text()
+    } catch {
+      responseBody = '[[logger] Erro ao ler o response]'
+    }
+
+    logger.logs.requests.push({
+      type: 'fetch',
+      method,
+      url: url.toString(),
+      requestBody,
+      responseBody,
+      status: response.status,
+      time: startTime
+    })
+
     return response
   }
 
+  // Interceptar XHR
   const originalXHR = window.XMLHttpRequest
   window.XMLHttpRequest = class extends originalXHR {
     constructor() {
       super()
-      this._method = ''; this._url = ''; this._body = ''
+      this._method = ''
+      this._url = ''
+      this._body = ''
+
       const originalOpen = this.open
       this.open = function (method, url, ...rest) {
-        this._method = method; this._url = url
+        this._method = method
+        this._url = url
         return originalOpen.call(this, method, url, ...rest)
       }
+
       const originalSend = this.send
       this.send = function (body) {
         this._body = body
         this.addEventListener('loadend', function () {
           logger.logs.requests.push({
-            type: 'xhr', method: this._method, url: this.responseURL || this._url,
-            requestBody: this._body, responseBody: this.responseText || '[[logger] Sem conteúdo]',
-            status: this.status, time: new Date().toISOString()
+            type: 'xhr',
+            method: this._method,
+            url: this.responseURL || this._url,
+            requestBody: this._body,
+            responseBody: this.responseText || '[[logger] Sem conteúdo]',
+            status: this.status,
+            time: new Date().toISOString()
           })
         })
         return originalSend.call(this, body)
@@ -124,9 +161,25 @@ function initLogger() {
     }
   }
 
-  window.addEventListener('error', e => logger.logs.errors.push({ message: e.message, file: e.filename, line: e.lineno, col: e.colno, time: new Date().toISOString() }))
-  window.addEventListener('unhandledrejection', e => logger.logs.errors.push({ message: e.reason?.message || 'Unhandled rejection', time: new Date().toISOString() }))
+  // Logs de erros
+  window.addEventListener('error', e => {
+    logger.logs.errors.push({
+      message: e.message,
+      file: e.filename,
+      line: e.lineno,
+      col: e.colno,
+      time: new Date().toISOString()
+    })
+  })
 
+  window.addEventListener('unhandledrejection', e => {
+    logger.logs.errors.push({
+      message: e.reason?.message || 'Unhandled rejection',
+      time: new Date().toISOString()
+    })
+  })
+
+  // Logs do console
   ['log', 'warn', 'error', 'info'].forEach(type => {
     const original = console[type] || (() => {})
     console[type] = (...args) => {
