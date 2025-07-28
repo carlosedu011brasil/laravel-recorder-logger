@@ -192,6 +192,7 @@ function initLogger() {
         original(...args)
       }
     })
+  }
 }
 
 function monitorRouteChanges() {
@@ -335,7 +336,7 @@ function formatTimer(seconds) {
 onBeforeUnmount(() => {
   if (interval) clearInterval(interval)
 })
-}
+
 </script>
 
 <style lang="scss">
