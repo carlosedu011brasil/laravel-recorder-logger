@@ -1,23 +1,21 @@
 <template>
   <teleport to="body">
-    <!-- CONTROLES EM TELA FLUTUANTE -->
-    <div v-if="recording && showRecordingUI" class="recorder-overlay">
-      <div class="recorder-modal">
-        <p class="text-sm font-mono mb-2">{{ formatTimer(timer) }}</p>
-        <button @click="toggleControls" class="btn-secondary">Ocultar Controles</button>
-        <button @click="pauseRecording" class="btn-pause">Pausar</button>
-        <button @click="stopRecording" class="btn-stop">Parar</button>
-      </div>
-    </div>
+    <RecorderControls
+      v-if="recording && showRecordingUI"
+      :timer="timer"
+      @pause="pauseRecording"
+      @stop="stopRecording"
+      @toggle="toggleControls"
+    />
 
-    <!-- BOTÃO PARA REABRIR CONTROLES -->
-    <div v-else-if="recording">
-      <button @click="toggleControls" class="btn-secondary text-xs fixed bottom-4 right-4 z-[9999]">
-        Mostrar Controles
-      </button>
-    </div>
+    <button
+      v-else-if="recording"
+      @click="toggleControls"
+      class="btn-secondary text-xs fixed bottom-4 right-4 z-[9999]"
+    >
+      Mostrar Controles
+    </button>
 
-    <!-- PREVIEW FLUTUANTE -->
     <div
       v-if="previewReady"
       class="recorder-controls movable rec-controls"
@@ -32,7 +30,9 @@
 
   <!-- FORMULÁRIO INICIAL -->
   <div v-if="!recording && !previewReady && showForm" class="recorder-wrapper">
-    <h2 class="text-lg font-semibold mb-2">Descreva o erro e clique em “Iniciar gravação”</h2>
+    <h2 class="text-lg font-semibold mb-2">
+      Descreva o erro e clique em “Iniciar gravação”
+    </h2>
     <textarea
       v-model="desc"
       placeholder="Explique o problema..."
@@ -43,256 +43,35 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, defineProps, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { usePage } from '@inertiajs/vue3'
+import RecorderControls from './RecorderControls.vue'
 
-const props = defineProps({ theme: { type: String, default: 'primary' } })
+import useRecorder from './useComponents/useRecorder.js'
+import useLogger from './useComponents/useLogger.js'
+import useDraggable from './useComponents/useDraggable.js'
+
+const desc = ref('')
 const page = usePage()
 const showForm = computed(() => page.url === '/')
 
-const desc = ref('')
-const recording = ref(false)
-const paused = ref(false)
-const timer = ref(0)
-const previewReady = ref(false)
-const finalizing = ref(false)
-const videoPreviewUrl = ref(null)
-const showRecordingUI = ref(true)
+const {
+  recording,
+  paused,
+  timer,
+  previewReady,
+  videoPreviewUrl,
+  startRecording,
+  stopRecording,
+  pauseRecording,
+  resumeRecording,
+  resetRecorder,
+  toggleControls,
+  showRecordingUI
+} = useRecorder(desc)
 
-let interval = null
-let mediaRecorder = null
-let recordedChunks = []
-let stream = null
-
-const position = reactive({ x: 40, y: 40 })
-
-const logger = {
-  StartpageUrl: '',
-  visitedRoutes: [],
-  logs: { console: [], errors: [], requests: [] }
-}
-
-onMounted(() => {
-  if (window._recorderInstance?.active) {
-    restoreFromGlobal()
-  }
-})
-
-function exportLog() {
-  logger.StartpageUrl = logger.visitedRoutes.at(-1)?.route || location.href
-  return JSON.stringify(logger, null, 2)
-}
-
-function initLogger() {
-  monitorRouteChanges()
-
-  // Garantir que a estrutura de logs está correta antes de sobrescrever o console
-  if (!logger.logs || !Array.isArray(logger.logs.console)) {
-    logger.logs = {
-      console: [],
-      errors: [],
-      requests: []
-    }
-  }
-
-  // Interceptar fetch
-  const originalFetch = window.fetch
-  window.fetch = async (...args) => {
-    const [url, options] = args
-    const method = options?.method || 'GET'
-    const requestBody = options?.body || null
-    const startTime = new Date().toISOString()
-
-    const response = await originalFetch(...args)
-    const cloned = response.clone()
-
-    let responseBody = ''
-    try {
-      responseBody = await cloned.text()
-    } catch {
-      responseBody = '[[logger] Erro ao ler o response]'
-    }
-
-    logger.logs.requests.push({
-      type: 'fetch',
-      method,
-      url: url.toString(),
-      requestBody,
-      responseBody,
-      status: response.status,
-      time: startTime
-    })
-
-    return response
-  }
-
-  // Interceptar XHR
-  const originalXHR = window.XMLHttpRequest
-  window.XMLHttpRequest = class extends originalXHR {
-    constructor() {
-      super()
-      this._method = ''
-      this._url = ''
-      this._body = ''
-
-      const originalOpen = this.open
-      this.open = function (method, url, ...rest) {
-        this._method = method
-        this._url = url
-        return originalOpen.call(this, method, url, ...rest)
-      }
-
-      const originalSend = this.send
-      this.send = function (body) {
-        this._body = body
-        this.addEventListener('loadend', function () {
-          logger.logs.requests.push({
-            type: 'xhr',
-            method: this._method,
-            url: this.responseURL || this._url,
-            requestBody: this._body,
-            responseBody: this.responseText || '[[logger] Sem conteúdo]',
-            status: this.status,
-            time: new Date().toISOString()
-          })
-        })
-        return originalSend.call(this, body)
-      }
-    }
-  }
-
-  // Logs de erros
-  window.addEventListener('error', e => {
-    logger.logs.errors.push({
-      message: e.message,
-      file: e.filename,
-      line: e.lineno,
-      col: e.colno,
-      time: new Date().toISOString()
-    })
-  })
-
-  window.addEventListener('unhandledrejection', e => {
-    logger.logs.errors.push({
-      message: e.reason?.message || 'Unhandled rejection',
-      time: new Date().toISOString()
-    })
-  })
-
-  // Logs do console
-  if (typeof console !== 'undefined' && typeof logger.logs?.console !== 'undefined') {
-    ['log', 'warn', 'error', 'info'].forEach(type => {
-      const original = typeof console[type] === 'function' ? console[type] : () => {}
-      console[type] = (...args) => {
-        try {
-          logger.logs.console.push({ type, args, time: new Date().toISOString() })
-        } catch (e) {
-          // Falha ao logar o próprio log, ignorar
-        }
-        original(...args)
-      }
-    })
-  }
-}
-
-function monitorRouteChanges() {
-  let currentUrl = location.href
-  logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: currentUrl })
-  const logRouteChange = () => {
-    const newUrl = location.href
-    if (newUrl !== currentUrl) {
-      currentUrl = newUrl
-      logger.visitedRoutes.push({ timestamp: new Date().toISOString(), route: newUrl })
-    }
-  }
-  ['pushState', 'replaceState'].forEach(method => {
-    const original = history[method]
-    history[method] = function (...args) {
-      const result = original.apply(this, args)
-      logRouteChange()
-      return result
-    }
-  })
-  window.addEventListener('popstate', logRouteChange)
-}
-
-function toggleControls() {
-  showRecordingUI.value = !showRecordingUI.value
-}
-
-async function startRecording() {
-  if (window._recorderInstance?.active) return
-  initLogger()
-  stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-  mediaRecorder = new MediaRecorder(stream)
-  recordedChunks = []
-  mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data)
-  mediaRecorder.onstop = saveRecording
-  mediaRecorder.start()
-  recording.value = true
-  paused.value = false
-  timer.value = 0
-  interval = setInterval(() => timer.value++, 1000)
-  window._recorderInstance = {
-    active: true,
-    pause: pauseRecording,
-    resume: resumeRecording,
-    stop: stopRecording,
-    getLogger: exportLog,
-    previewReady,
-    recording,
-    videoPreviewUrl,
-    stream,
-    chunks: recordedChunks,
-    timer,
-  }
-}
-
-function restoreFromGlobal() {
-  const global = window._recorderInstance
-  if (!global) return
-  recording.value = true
-  paused.value = false
-  previewReady.value = global.previewReady?.value || false
-  videoPreviewUrl.value = global.videoPreviewUrl?.value || null
-  recordedChunks = global.chunks || []
-  stream = global.stream
-  timer.value = global.timer?.value || 0
-}
-
-function pauseRecording() {
-  if (mediaRecorder?.state === 'recording') {
-    mediaRecorder.pause()
-    paused.value = true
-    clearInterval(interval)
-  }
-}
-
-function resumeRecording() {
-  if (mediaRecorder?.state === 'paused') {
-    mediaRecorder.resume()
-    paused.value = false
-    interval = setInterval(() => timer.value++, 1000)
-  }
-}
-
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop()
-    stream?.getTracks().forEach(t => t.stop())
-    clearInterval(interval)
-    finalizing.value = true
-    window._recorderInstance = null
-  }
-}
-
-function saveRecording() {
-  const blob = new Blob(recordedChunks, { type: 'video/webm' })
-  videoPreviewUrl.value = URL.createObjectURL(blob)
-  previewReady.value = true
-  recording.value = false
-  paused.value = false
-}
+const { initLogger, exportLog } = useLogger()
+const { position } = useDraggable()
 
 function sendRecording() {
   const output = {
@@ -315,28 +94,15 @@ function cancelRecording() {
   resetRecorder()
 }
 
-function resetRecorder() {
-  previewReady.value = false
-  videoPreviewUrl.value = null
-  finalizing.value = false
-  recording.value = false
-  paused.value = false
-  timer.value = 0
-  desc.value = ''
-  recordedChunks = []
-  mediaRecorder = null
-}
-
-function formatTimer(seconds) {
-  const min = Math.floor(seconds / 60).toString().padStart(2, '0')
-  const sec = (seconds % 60).toString().padStart(2, '0')
-  return `${min}:${sec}`
-}
-
-onBeforeUnmount(() => {
-  if (interval) clearInterval(interval)
+onMounted(() => {
+  if (window._recorderInstance?.active) {
+    resumeRecording()
+  }
 })
 
+onBeforeUnmount(() => {
+  if (typeof clearInterval === 'function') clearInterval()
+})
 </script>
 
 <style lang="scss">
