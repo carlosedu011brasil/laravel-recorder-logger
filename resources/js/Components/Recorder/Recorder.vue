@@ -1,35 +1,5 @@
 <template>
-  <teleport to="body">
-    <RecorderControls
-      v-if="recording && showRecordingUI"
-      :timer="timer"
-      @pause="pauseRecording"
-      @stop="stopRecording"
-      @toggle="toggleControls"
-    />
-
-    <button
-      v-else-if="recording"
-      @click="toggleControls"
-      class="btn-secondary text-xs fixed bottom-4 right-4 z-[9999]"
-    >
-      Mostrar Controles
-    </button>
-
-    <div
-      v-if="previewReady"
-      class="recorder-controls movable rec-controls"
-      :style="{ top: position.y + 'px', left: position.x + 'px' }"
-    >
-      <p class="text-sm font-mono mb-2">Visualização da gravação:</p>
-      <video :src="videoPreviewUrl" controls />
-      <button @click="sendRecording" class="btn-start">Enviar</button>
-      <button @click="cancelRecording" class="btn-stop mt-2">Cancelar</button>
-    </div>
-  </teleport>
-
-  <!-- FORMULÁRIO INICIAL -->
-  <div v-if="!recording && !previewReady && showForm" class="recorder-wrapper">
+  <div v-if="showForm" class="recorder-wrapper">
     <h2 class="text-lg font-semibold mb-2">
       Descreva o erro e clique em “Iniciar gravação”
     </h2>
@@ -43,65 +13,24 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { usePage } from '@inertiajs/vue3'
-import RecorderControls from './RecorderControls.vue'
-
 import useRecorder from './useComponents/useRecorder.js'
-import useLogger from './useComponents/useLogger.js'
-import useDraggable from './useComponents/useDraggable.js'
 
-const desc = ref('')
+const desc = ref(window.__recorderInstance?.desc || '')
 const page = usePage()
-const showForm = computed(() => page.url === '/')
+const showForm = ref(page.url === '/')
 
-const {
-  recording,
-  paused,
-  timer,
-  previewReady,
-  videoPreviewUrl,
-  startRecording,
-  stopRecording,
-  pauseRecording,
-  resumeRecording,
-  resetRecorder,
-  toggleControls,
-  showRecordingUI
-} = useRecorder(desc)
-
-const { initLogger, exportLog } = useLogger()
-const { position } = useDraggable()
-
-function sendRecording() {
-  const output = {
-    descricao: desc.value,
-    videoUrl: videoPreviewUrl.value,
-    logs: JSON.parse(exportLog())
-  }
-  fetch('/save-logger', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(output)
-  })
-    .then(() => console.log('[logger] Enviado com sucesso'))
-    .catch(err => console.error('[logger] Erro ao enviar', err))
-  resetRecorder()
-}
-
-function cancelRecording() {
-  console.log('[logger] Envio cancelado')
-  resetRecorder()
-}
-
-onMounted(() => {
-  if (window._recorderInstance?.active) {
-    resumeRecording()
-  }
+watch(desc, (val) => {
+  if (!window.__recorderInstance) window.__recorderInstance = {}
+  window.__recorderInstance.desc = val
 })
 
-onBeforeUnmount(() => {
-  if (typeof clearInterval === 'function') clearInterval()
+const { startRecording } = useRecorder(desc)
+
+onMounted(() => {
+  if (!window.__recorderInstance) window.__recorderInstance = {}
+  window.__recorderInstance.desc = desc.value
 })
 </script>
 

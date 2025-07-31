@@ -1,13 +1,15 @@
 export default function useLogger() {
-  const logData = {
+  const logData = window.__recorderLogs || {
     console: [],
     errors: [],
     fetches: [],
-    navigation: []
+    xhr: [],
+    navigation: [],
   }
 
   const originalLog = console.log
   const originalError = console.error
+  const originalFetch = window.fetch
 
   function hijackConsole() {
     console.log = (...args) => {
@@ -21,7 +23,6 @@ export default function useLogger() {
   }
 
   function hijackFetch() {
-    const originalFetch = window.fetch
     window.fetch = async (...args) => {
       const response = await originalFetch(...args)
       logData.fetches.push({
@@ -30,6 +31,21 @@ export default function useLogger() {
         timestamp: new Date().toISOString()
       })
       return response
+    }
+  }
+
+  function hijackXHR() {
+    const originalOpen = XMLHttpRequest.prototype.open
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.addEventListener('loadend', function () {
+        logData.xhr.push({
+          url,
+          method,
+          status: this.status,
+          timestamp: new Date().toISOString()
+        })
+      })
+      return originalOpen.apply(this, arguments)
     }
   }
 
@@ -44,11 +60,13 @@ export default function useLogger() {
   function initLogger() {
     hijackConsole()
     hijackFetch()
+    hijackXHR()
     monitorNavigation()
+    window.__recorderLogs = logData
   }
 
   function exportLog() {
-    return JSON.stringify(logData)
+    return JSON.stringify(window.__recorderLogs || logData)
   }
 
   return {
